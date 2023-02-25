@@ -1,40 +1,22 @@
-from torch.optim.lr_scheduler import CosineAnnealingLR
-import warnings
-import math
+import torch.nn as nn
+import torch
+import matplotlib.pyplot as plt
+from scheduler_warmup import CosineAnnealingLR_Warmup
 
+net = nn.Sequential(nn.Linear(1,1,bias=False))
+optimizer = torch.optim.SGD(net.parameters(),lr=1e-3)
+scheduler = CosineAnnealingLR_Warmup(optimizer,total_epoch=100,eta_min=1e-4,warmup_start_lr=1e-4,warmup_epochs=5)
 
-class CosineAnnealingLRWarmup(CosineAnnealingLR):
-    def __init__(self, optimizer, T_max, eta_min=1.0e-5, last_epoch=-1, verbose=False,
-                 warmup_steps=2, warmup_start_lr=1.0e-5):
-        super(CosineAnnealingLRWarmup, self).__init__(optimizer, T_max=T_max,
-                                                      eta_min=eta_min,
-                                                      last_epoch=last_epoch,
-                                                      verbose=verbose)
-        self.warmup_steps = warmup_steps
-        self.warmup_start_lr = warmup_start_lr
-        if warmup_steps > 0:
-            self.base_warup_factors = [
-                (base_lr / warmup_start_lr) ** (1.0 / self.warmup_steps)
-                for base_lr in self.base_lrs
-            ]
+lrs =[]
+epochs = []
+for epoch in range(100):
+    epochs.append(epoch)
+    optimizer.step()
+    print(optimizer.state_dict()['param_groups'][0]['lr'])
+    lrs.append(scheduler.get_last_lr())
+    scheduler.step()
 
-    def get_lr(self):
-        if not self._get_lr_called_within_step:
-            warnings.warn("To get the last learning rate computed by the scheduler, "
-                          "please use `get_last_lr()`.", UserWarning)
-        return self._get_closed_form_lr()
+plt.figure()
+plt.plot(epochs,lrs)
+plt.show()
 
-    def _get_closed_form_lr(self):
-        if hasattr(self, 'warmup_steps'):
-            if self.last_epoch < self.warmup_steps:
-                return [self.warmup_start_lr * (warmup_factor ** self.last_epoch)
-                        for warmup_factor in self.base_warup_factors]
-            else:
-                return [self.eta_min + (base_lr - self.eta_min) *
-                        (1 + math.cos(
-                            math.pi * (self.last_epoch - self.warmup_steps) / (self.T_max - self.warmup_steps))) * 0.5
-                        for base_lr in self.base_lrs]
-        else:
-            return [self.eta_min + (base_lr - self.eta_min) *
-                    (1 + math.cos(math.pi * self.last_epoch / self.T_max)) / 2
-                    for base_lr in self.base_lrs]
